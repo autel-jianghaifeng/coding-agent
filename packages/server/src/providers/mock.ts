@@ -1,0 +1,103 @@
+import type { AIProvider, AIMessage, AIResponse, StreamCallbacks } from './provider.js';
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let callCount = 0;
+
+async function streamText(text: string, callbacks: StreamCallbacks): Promise<void> {
+  // Simulate streaming by emitting chunks of ~3-5 chars with small delays
+  let i = 0;
+  while (i < text.length) {
+    const chunkSize = 3 + Math.floor(Math.random() * 3);
+    const chunk = text.slice(i, i + chunkSize);
+    callbacks.onText(chunk);
+    i += chunkSize;
+    await delay(20 + Math.floor(Math.random() * 30));
+  }
+}
+
+function getResponse(messages: AIMessage[]): AIResponse {
+  callCount++;
+
+  // First call: return a plan with tool calls
+  if (callCount % 3 === 1) {
+    return {
+      content: "I'll help you with that. Let me start by setting up the project structure.",
+      toolCalls: [
+        {
+          name: 'create-dir',
+          input: { path: 'src' },
+        },
+        {
+          name: 'write-file',
+          input: {
+            path: 'src/index.ts',
+            content: `// Main entry point\nconsole.log("Hello from the coding agent!");\n\nexport function greet(name: string): string {\n  return \`Hello, \${name}!\`;\n}\n`,
+          },
+        },
+      ],
+      stopReason: 'tool_use',
+    };
+  }
+
+  // Second call: more tool calls
+  if (callCount % 3 === 2) {
+    return {
+      content: "Now let me create a configuration file and a README.",
+      toolCalls: [
+        {
+          name: 'write-file',
+          input: {
+            path: 'package.json',
+            content: JSON.stringify(
+              {
+                name: 'my-project',
+                version: '1.0.0',
+                type: 'module',
+                main: 'src/index.ts',
+                scripts: {
+                  start: 'ts-node src/index.ts',
+                  build: 'tsc',
+                },
+              },
+              null,
+              2,
+            ) + '\n',
+          },
+        },
+        {
+          name: 'write-file',
+          input: {
+            path: 'README.md',
+            content: `# My Project\n\nA sample project created by the coding agent.\n\n## Getting Started\n\n\`\`\`bash\nnpm install\nnpm start\n\`\`\`\n`,
+          },
+        },
+      ],
+      stopReason: 'tool_use',
+    };
+  }
+
+  // Third call: summary, no more tools
+  return {
+    content: `I've completed the task. Here's what I did:\n\n1. Created the \`src/\` directory\n2. Created \`src/index.ts\` with a greeting function\n3. Created \`package.json\` with project configuration\n4. Created \`README.md\` with documentation\n\nThe project is ready to use! You can run \`npm start\` to execute it.`,
+    toolCalls: [],
+    stopReason: 'end_turn',
+  };
+}
+
+export class MockProvider implements AIProvider {
+  async chat(messages: AIMessage[], _systemPrompt: string): Promise<AIResponse> {
+    const response = getResponse(messages);
+    await delay(600);
+    return response;
+  }
+
+  async streamChat(messages: AIMessage[], _systemPrompt: string, callbacks: StreamCallbacks): Promise<AIResponse> {
+    const response = getResponse(messages);
+    // Simulate streaming the text content
+    if (response.content) {
+      await streamText(response.content, callbacks);
+    }
+    return response;
+  }
+}
