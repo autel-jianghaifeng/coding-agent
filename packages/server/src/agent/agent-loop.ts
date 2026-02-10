@@ -64,7 +64,8 @@ export async function runAgentLoop(
       // Stream plan from AI — text deltas are forwarded to client in real-time
       const plan = await streamPlanTask(
         provider,
-        round === 1 ? userMessage : 'Continue executing the plan. Use tools if needed, or provide a final summary if done.',
+        // round === 1 ? userMessage : 'Continue executing the plan. Use tools if needed, or provide a final summary if done.',
+        round === 1 ? userMessage : '继续按计划执行，如果需要使用工具，请使用工具，如果计划执行完成，请提供最终总结。',
         conversationHistory,
         {
           onText: (delta) => {
@@ -134,9 +135,11 @@ export async function runAgentLoop(
         socket.emit('task:step:updated', { taskId, step: { ...result.step } });
 
         // Add tool result to conversation context
+        const toolResultContent = `Tool "${step.tool}" executed. Result: ${result.toolResult.output}`;
+        console.log('[LLM Context] Tool result added to conversation:', toolResultContent);
         conversationHistory.push({
           role: 'user',
-          content: `Tool "${step.tool}" executed. Result: ${result.toolResult.output}`,
+          content: toolResultContent,
         });
       }
 

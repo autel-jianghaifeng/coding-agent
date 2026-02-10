@@ -37,6 +37,10 @@ export class ClaudeProvider implements AIProvider {
   }
 
   async chat(messages: AIMessage[], systemPrompt: string): Promise<AIResponse> {
+    console.log('[LLM Request] chat() called');
+    console.log('[LLM Request] messages:', JSON.stringify(messages, null, 2));
+    console.log('[LLM Request] systemPrompt:', systemPrompt);
+
     const response = await this.client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4096,
@@ -59,6 +63,11 @@ export class ClaudeProvider implements AIProvider {
       }
     }
 
+    console.log('[LLM Response] chat() result');
+    console.log('[LLM Response] content:', textContent);
+    console.log('[LLM Response] toolCalls:', JSON.stringify(toolCalls, null, 2));
+    console.log('[LLM Response] stopReason:', response.stop_reason);
+
     return {
       content: textContent,
       toolCalls,
@@ -67,6 +76,10 @@ export class ClaudeProvider implements AIProvider {
   }
 
   async streamChat(messages: AIMessage[], systemPrompt: string, callbacks: StreamCallbacks): Promise<AIResponse> {
+    console.log('[LLM Request] streamChat() called');
+    console.log('[LLM Request] messages:', JSON.stringify(messages, null, 2));
+    console.log('[LLM Request] systemPrompt:', systemPrompt);
+
     const stream = this.client.messages.stream({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 4096,
@@ -94,6 +107,11 @@ export class ClaudeProvider implements AIProvider {
         });
       }
     }
+
+    console.log('[LLM Response] streamChat() result');
+    console.log('[LLM Response] content:', textContent);
+    console.log('[LLM Response] toolCalls:', JSON.stringify(toolCalls, null, 2));
+    console.log('[LLM Response] stopReason:', finalMessage.stop_reason);
 
     return {
       content: textContent,

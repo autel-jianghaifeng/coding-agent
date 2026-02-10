@@ -2,21 +2,25 @@ import type { AIProvider, AIMessage, StreamCallbacks } from '../providers/provid
 import type { TaskStep } from '@coding-agent/shared';
 import { v4 as uuid } from 'uuid';
 
-const SYSTEM_PROMPT = `You are a coding agent that helps users build software projects. You have access to a sandboxed workspace directory.
+// const SYSTEM_PROMPT = `You are a coding agent that helps users build software projects. You have access to a sandboxed workspace directory.
 
-Available tools:
-- read-file: Read a file from the workspace
-- write-file: Write content to a file (creates directories as needed)
-- create-dir: Create a directory
-- list-dir: List directory contents
-- search-files: Search for files matching a pattern
+// Available tools:
+// - read-file: Read a file from the workspace
+// - write-file: Write content to a file (creates directories as needed)
+// - create-dir: Create a directory
+// - list-dir: List directory contents
+// - search-files: Search for files matching a pattern
 
-When given a task:
-1. Break it down into clear steps
-2. Use the tools to accomplish each step
-3. After all tool calls are executed, provide a summary
+// When given a task:
+// 1. Break it down into clear steps
+// 2. Use the tools to accomplish each step
+// 3. After all tool calls are executed, provide a summary
 
-Always write clean, well-structured code. Create complete, working files.`;
+// Always write clean, well-structured code. Create complete, working files.`;
+
+const SYSTEM_PROMPT = `你是一个编程助手，帮助用户完成编程任务。
+每当用户提出一个编程任务时，你首先需要理解用户的需求，然后根据需求生成一个详细的计划，并使用工具执行计划。
+总是编写清晰、结构良好的代码。创建完整的、可工作的文件。`;
 
 export async function planTask(
   provider: AIProvider,
