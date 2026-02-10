@@ -25,10 +25,12 @@ function getResponse(messages: AIMessage[]): AIResponse {
       content: "I'll help you with that. Let me start by setting up the project structure.",
       toolCalls: [
         {
+          id: `mock_tool_${callCount}_1`,
           name: 'create-dir',
           input: { path: 'src' },
         },
         {
+          id: `mock_tool_${callCount}_2`,
           name: 'write-file',
           input: {
             path: 'src/index.ts',
@@ -46,6 +48,7 @@ function getResponse(messages: AIMessage[]): AIResponse {
       content: "Now let me create a configuration file and a README.",
       toolCalls: [
         {
+          id: `mock_tool_${callCount}_1`,
           name: 'write-file',
           input: {
             path: 'package.json',
@@ -66,6 +69,7 @@ function getResponse(messages: AIMessage[]): AIResponse {
           },
         },
         {
+          id: `mock_tool_${callCount}_2`,
           name: 'write-file',
           input: {
             path: 'README.md',

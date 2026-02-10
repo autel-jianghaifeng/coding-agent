@@ -1,11 +1,11 @@
 import type { Server, Socket } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents, Task, ChatMessage } from '@coding-agent/shared';
 import { v4 as uuid } from 'uuid';
-import { streamPlanTask, SYSTEM_PROMPT } from './planner.js';
+import { streamPlanTask } from './planner.js';
 import { executeStep } from './executor.js';
 import { getFileTree } from '../services/workspace.js';
 import * as sessionService from '../services/session.js';
-import type { AIProvider, AIMessage } from '../providers/provider.js';
+import type { AIProvider, AIMessage, AIContentBlock } from '../providers/provider.js';
 
 const MAX_ROUNDS = 3;
 
@@ -42,7 +42,10 @@ export async function runAgentLoop(
   socket.emit('task:created', { ...task });
   await sessionService.upsertTaskInSession(sessionId, task);
 
-  const conversationHistory: AIMessage[] = [];
+  // Conversation history with proper tool_use/tool_result structure
+  const conversationHistory: AIMessage[] = [
+    { role: 'user', content: userMessage },
+  ];
   let round = 0;
 
   try {
@@ -61,11 +64,9 @@ export async function runAgentLoop(
       const streamMsgId = uuid();
       socket.emit('chat:stream:start', { messageId: streamMsgId, taskId });
 
-      // Stream plan from AI — text deltas are forwarded to client in real-time
+      // Stream plan from AI — conversationHistory already contains all context
       const plan = await streamPlanTask(
         provider,
-        // round === 1 ? userMessage : 'Continue executing the plan. Use tools if needed, or provide a final summary if done.',
-        round === 1 ? userMessage : '继续按计划执行，如果需要使用工具，请使用工具，如果计划执行完成，请提供最终总结。',
         conversationHistory,
         {
           onText: (delta) => {
@@ -77,10 +78,8 @@ export async function runAgentLoop(
       // End the stream
       socket.emit('chat:stream:end', { messageId: streamMsgId });
 
+      // Emit assistant chat message for UI (text only)
       if (plan.content) {
-        conversationHistory.push({ role: 'assistant', content: plan.content });
-
-        // Persist the assistant message for every round that has text
         const assistantMsg: ChatMessage = {
           id: streamMsgId,
           role: 'assistant',
@@ -92,24 +91,42 @@ export async function runAgentLoop(
         await sessionService.addMessageToSession(sessionId, assistantMsg);
       }
 
-      // If no tool calls, we're done
+      // If no tool calls, add text to history and break
       if (plan.steps.length === 0) {
         if (plan.content) {
+          conversationHistory.push({ role: 'assistant', content: plan.content });
           task.summary = plan.content;
         }
         break;
       }
 
-      // Add steps to task
+      // Store the full assistant response with tool_use blocks in conversation history
+      const assistantBlocks: AIContentBlock[] = [];
+      if (plan.content) {
+        assistantBlocks.push({ type: 'text', text: plan.content });
+      }
+      for (const tc of plan.toolCalls) {
+        assistantBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
+      }
+      conversationHistory.push({ role: 'assistant', content: assistantBlocks });
+
+      // Add steps to task, linking each to the assistant message from this round
+      for (const step of plan.steps) {
+        step.afterMessageId = streamMsgId;
+      }
       task.steps.push(...plan.steps);
       task.updatedAt = Date.now();
       socket.emit('task:updated', { ...task });
 
-      // Execute each step
-      for (const step of plan.steps) {
+      // Execute each step and collect results
+      const stepResults: string[] = [];
+      for (let i = 0; i < plan.steps.length; i++) {
+        const step = plan.steps[i];
+
         if (abortSignal.aborted) {
           step.status = 'skipped';
           socket.emit('task:step:updated', { taskId, step: { ...step } });
+          stepResults.push('Skipped');
           continue;
         }
 
@@ -122,6 +139,7 @@ export async function runAgentLoop(
 
         // Execute
         const result = await executeStep(step);
+        stepResults.push(result.toolResult.output);
 
         // If file was changed, attach diff to step and emit
         if (result.toolResult.diff) {
@@ -133,15 +151,17 @@ export async function runAgentLoop(
 
         // Emit step update (with diff attached if present)
         socket.emit('task:step:updated', { taskId, step: { ...result.step } });
-
-        // Add tool result to conversation context
-        const toolResultContent = `Tool "${step.tool}" executed. Result: ${result.toolResult.output}`;
-        console.log('[LLM Context] Tool result added to conversation:', toolResultContent);
-        conversationHistory.push({
-          role: 'user',
-          content: toolResultContent,
-        });
       }
+
+      // Add tool results as a single user message with proper tool_result blocks
+      const toolResultBlocks: AIContentBlock[] = plan.toolCalls.map((tc, i) => ({
+        type: 'tool_result' as const,
+        tool_use_id: tc.id,
+        content: stepResults[i] || 'No output',
+      }));
+      conversationHistory.push({ role: 'user', content: toolResultBlocks });
+
+      console.log('[LLM Context] Tool results added to conversation as tool_result blocks');
 
       // Persist task after each execution round
       await sessionService.upsertTaskInSession(sessionId, task);

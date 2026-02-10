@@ -3,12 +3,10 @@ import { useStore } from '../../store';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { MessageItem } from './MessageItem';
 import { TaskStepComponent } from './TaskStep';
+import type { TaskStep } from '@coding-agent/shared';
 
-function TaskStepsBlock({ taskId }: { taskId: string }) {
-  const tasks = useStore((s) => s.tasks);
-  const task = tasks.get(taskId);
-
-  if (!task || task.steps.length === 0) return null;
+function StepsBlock({ steps }: { steps: TaskStep[] }) {
+  if (steps.length === 0) return null;
 
   return (
     <div style={{ padding: '4px 16px 4px 16px' }}>
@@ -19,7 +17,7 @@ function TaskStepsBlock({ taskId }: { taskId: string }) {
           padding: '10px 12px',
         }}
       >
-        {task.steps.map((step, i) => (
+        {steps.map((step, i) => (
           <TaskStepComponent key={step.id} step={step} index={i} />
         ))}
       </div>
@@ -33,30 +31,36 @@ export function MessageList() {
   const activeTaskId = useStore((s) => s.activeTaskId);
   const scrollRef = useAutoScroll<HTMLDivElement>([messages, tasks, activeTaskId]);
 
-  // Track which taskIds have already been rendered via user messages
-  // so we don't duplicate the active task block at the bottom
-  const renderedTaskIds = new Set<string>();
-
-  // Build the render list: message + its task steps interleaved
+  // Build the render list: interleave messages and their associated steps chronologically
   const items: React.ReactNode[] = [];
+  const renderedStepIds = new Set<string>();
 
   for (const msg of messages) {
     items.push(<MessageItem key={msg.id} message={msg} />);
 
-    // After a user message that triggered a task, render that task's steps
-    if (msg.role === 'user' && msg.taskId) {
-      renderedTaskIds.add(msg.taskId);
-      items.push(<TaskStepsBlock key={`steps-${msg.taskId}`} taskId={msg.taskId} />);
+    // After each assistant message, render the steps that belong to this message
+    if (msg.role === 'assistant' && msg.taskId) {
+      const task = tasks.get(msg.taskId);
+      if (task) {
+        const stepsForMessage = task.steps.filter(
+          (s) => s.afterMessageId === msg.id
+        );
+        if (stepsForMessage.length > 0) {
+          for (const s of stepsForMessage) renderedStepIds.add(s.id);
+          items.push(
+            <StepsBlock key={`steps-${msg.id}`} steps={stepsForMessage} />
+          );
+        }
+      }
     }
   }
 
-  // If there's an active running task whose steps haven't been rendered yet
-  // (e.g. the user message hasn't arrived from server yet), show at bottom
+  // Show any remaining steps that haven't been rendered yet
+  // (e.g. steps without afterMessageId from old sessions, or steps still running)
   const activeTask = activeTaskId ? tasks.get(activeTaskId) : undefined;
-  const showTrailingSteps =
-    activeTask &&
-    activeTask.steps.length > 0 &&
-    !renderedTaskIds.has(activeTaskId!);
+  const unrenderedSteps = activeTask
+    ? activeTask.steps.filter((s) => !renderedStepIds.has(s.id))
+    : [];
 
   return (
     <div
@@ -88,8 +92,8 @@ export function MessageList() {
         </div>
       )}
       {items}
-      {showTrailingSteps && (
-        <TaskStepsBlock taskId={activeTaskId!} />
+      {unrenderedSteps.length > 0 && (
+        <StepsBlock steps={unrenderedSteps} />
       )}
     </div>
   );

@@ -29,10 +29,11 @@ export class ClaudeProvider implements AIProvider {
     }));
   }
 
-  private buildMessages(messages: AIMessage[]) {
+  private buildMessages(messages: AIMessage[]): Anthropic.MessageParam[] {
     return messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
-      content: m.content,
+      // Pass content through as-is; Anthropic SDK accepts both string and content block arrays
+      content: m.content as Anthropic.MessageParam['content'],
     }));
   }
 
@@ -57,6 +58,7 @@ export class ClaudeProvider implements AIProvider {
         textContent += block.text;
       } else if (block.type === 'tool_use') {
         toolCalls.push({
+          id: block.id,
           name: block.name,
           input: block.input as Record<string, unknown>,
         });
@@ -102,6 +104,7 @@ export class ClaudeProvider implements AIProvider {
         textContent += block.text;
       } else if (block.type === 'tool_use') {
         toolCalls.push({
+          id: block.id,
           name: block.name,
           input: block.input as Record<string, unknown>,
         });

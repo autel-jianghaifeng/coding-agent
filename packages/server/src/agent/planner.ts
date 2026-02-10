@@ -1,22 +1,6 @@
-import type { AIProvider, AIMessage, StreamCallbacks } from '../providers/provider.js';
+import type { AIProvider, AIMessage, AIContentBlock, StreamCallbacks } from '../providers/provider.js';
 import type { TaskStep } from '@coding-agent/shared';
 import { v4 as uuid } from 'uuid';
-
-// const SYSTEM_PROMPT = `You are a coding agent that helps users build software projects. You have access to a sandboxed workspace directory.
-
-// Available tools:
-// - read-file: Read a file from the workspace
-// - write-file: Write content to a file (creates directories as needed)
-// - create-dir: Create a directory
-// - list-dir: List directory contents
-// - search-files: Search for files matching a pattern
-
-// When given a task:
-// 1. Break it down into clear steps
-// 2. Use the tools to accomplish each step
-// 3. After all tool calls are executed, provide a summary
-
-// Always write clean, well-structured code. Create complete, working files.`;
 
 const SYSTEM_PROMPT = `你是一个编程助手，帮助用户完成编程任务。
 每当用户提出一个编程任务时，你首先需要理解用户的需求，然后根据需求生成一个详细的计划，并使用工具执行计划。
@@ -26,7 +10,7 @@ export async function planTask(
   provider: AIProvider,
   userPrompt: string,
   conversationHistory: AIMessage[],
-): Promise<{ content: string; steps: TaskStep[]; toolCalls: { name: string; input: Record<string, unknown> }[] }> {
+): Promise<{ content: string; steps: TaskStep[]; toolCalls: { id: string; name: string; input: Record<string, unknown> }[] }> {
   const messages: AIMessage[] = [
     ...conversationHistory,
     { role: 'user', content: userPrompt },
@@ -50,18 +34,18 @@ export async function planTask(
   };
 }
 
+/**
+ * Stream a plan from the AI provider.
+ * @param conversationHistory - Full conversation history (including user messages and tool results).
+ *   For the first round, the caller should append the user message before calling.
+ *   For continuation rounds, the history already ends with a tool_result user message.
+ */
 export async function streamPlanTask(
   provider: AIProvider,
-  userPrompt: string,
   conversationHistory: AIMessage[],
   callbacks: StreamCallbacks,
-): Promise<{ content: string; steps: TaskStep[]; toolCalls: { name: string; input: Record<string, unknown> }[] }> {
-  const messages: AIMessage[] = [
-    ...conversationHistory,
-    { role: 'user', content: userPrompt },
-  ];
-
-  const response = await provider.streamChat(messages, SYSTEM_PROMPT, callbacks);
+): Promise<{ content: string; steps: TaskStep[]; toolCalls: { id: string; name: string; input: Record<string, unknown> }[] }> {
+  const response = await provider.streamChat(conversationHistory, SYSTEM_PROMPT, callbacks);
 
   const steps: TaskStep[] = response.toolCalls.map((tc) => ({
     id: uuid(),

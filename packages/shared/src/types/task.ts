@@ -11,6 +11,8 @@ export interface TaskStep {
   result?: string;
   error?: string;
   diff?: import('./file.js').FileDiff;
+  /** The assistant message ID after which this step should appear in the timeline */
+  afterMessageId?: string;
 }
 
 export interface Task {

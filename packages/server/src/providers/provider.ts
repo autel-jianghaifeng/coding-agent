@@ -1,9 +1,15 @@
+export type AIContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string };
+
 export interface AIMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string | AIContentBlock[];
 }
 
 export interface AIToolCall {
+  id: string;
   name: string;
   input: Record<string, unknown>;
 }
