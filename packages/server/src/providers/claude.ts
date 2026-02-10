@@ -44,7 +44,7 @@ export class ClaudeProvider implements AIProvider {
 
     const response = await this.client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: systemPrompt,
       tools: this.getAnthropicTools(),
       messages: this.buildMessages(messages),
@@ -73,7 +73,7 @@ export class ClaudeProvider implements AIProvider {
     return {
       content: textContent,
       toolCalls,
-      stopReason: response.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
+      stopReason: this.mapStopReason(response.stop_reason),
     };
   }
 
@@ -84,7 +84,7 @@ export class ClaudeProvider implements AIProvider {
 
     const stream = this.client.messages.stream({
       model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 4096,
+      max_tokens: 16384,
       system: systemPrompt,
       tools: this.getAnthropicTools(),
       messages: this.buildMessages(messages),
@@ -119,7 +119,16 @@ export class ClaudeProvider implements AIProvider {
     return {
       content: textContent,
       toolCalls,
-      stopReason: finalMessage.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
+      stopReason: this.mapStopReason(finalMessage.stop_reason),
     };
+  }
+
+  private mapStopReason(reason: string | null): AIResponse['stopReason'] {
+    switch (reason) {
+      case 'tool_use': return 'tool_use';
+      case 'max_tokens': return 'max_tokens';
+      case 'stop_sequence': return 'stop_sequence';
+      default: return 'end_turn';
+    }
   }
 }

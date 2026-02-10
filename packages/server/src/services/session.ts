@@ -3,6 +3,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
 import type { Session, SessionSummary, ChatMessage, Task, FileDiff } from '@coding-agent/shared';
+import type { TaskHistory } from '../agent/history.js';
+
+/** Server-internal persisted session — extends shared Session with LLM history */
+interface PersistedSession extends Session {
+  taskHistories?: TaskHistory[];
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../../../..');
@@ -20,7 +26,37 @@ export async function ensureSessionsDir(): Promise<void> {
 export async function getSession(sessionId: string): Promise<Session> {
   const filePath = sessionFilePath(sessionId);
   const raw = await fs.readFile(filePath, 'utf-8');
-  return JSON.parse(raw) as Session;
+  return JSON.parse(raw) as PersistedSession;
+}
+
+/** Read the full persisted session (including taskHistories) */
+async function getPersistedSession(sessionId: string): Promise<PersistedSession> {
+  const filePath = sessionFilePath(sessionId);
+  const raw = await fs.readFile(filePath, 'utf-8');
+  return JSON.parse(raw) as PersistedSession;
+}
+
+/** Return session without taskHistories — safe to send to clients */
+export async function getClientSession(sessionId: string): Promise<Session> {
+  const persisted = await getPersistedSession(sessionId);
+  const { taskHistories: _, ...clientSession } = persisted;
+  return clientSession;
+}
+
+/** Get task histories for a session (returns [] for legacy sessions) */
+export async function getTaskHistories(sessionId: string): Promise<TaskHistory[]> {
+  const persisted = await getPersistedSession(sessionId);
+  return persisted.taskHistories ?? [];
+}
+
+/** Append a task history entry to the session */
+export async function appendTaskHistory(sessionId: string, entry: TaskHistory): Promise<void> {
+  const persisted = await getPersistedSession(sessionId);
+  if (!persisted.taskHistories) {
+    persisted.taskHistories = [];
+  }
+  persisted.taskHistories.push(entry);
+  await saveSession(persisted);
 }
 
 export async function saveSession(session: Session): Promise<void> {

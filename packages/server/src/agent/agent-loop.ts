@@ -5,9 +5,10 @@ import { streamPlanTask } from './planner.js';
 import { executeStep } from './executor.js';
 import { getFileTree } from '../services/workspace.js';
 import * as sessionService from '../services/session.js';
+import { buildContextHistory } from './history.js';
 import type { AIProvider, AIMessage, AIContentBlock } from '../providers/provider.js';
 
-const MAX_ROUNDS = 3;
+const MAX_ROUNDS = 5;
 
 export async function runAgentLoop(
   io: Server<ClientToServerEvents, ServerToClientEvents>,
@@ -42,8 +43,14 @@ export async function runAgentLoop(
   socket.emit('task:created', { ...task });
   await sessionService.upsertTaskInSession(sessionId, task);
 
+  // Load prior task context from this session
+  const taskHistories = await sessionService.getTaskHistories(sessionId);
+  const session = await sessionService.getSession(sessionId);
+  const priorContext = buildContextHistory(taskHistories, session.tasks);
+
   // Conversation history with proper tool_use/tool_result structure
   const conversationHistory: AIMessage[] = [
+    ...priorContext,
     { role: 'user', content: userMessage },
   ];
   let round = 0;
@@ -55,6 +62,15 @@ export async function runAgentLoop(
         task.updatedAt = Date.now();
         socket.emit('task:updated', { ...task });
         await sessionService.upsertTaskInSession(sessionId, task);
+
+        // Save partial history on cancellation
+        const thisTaskMessages = conversationHistory.slice(priorContext.length);
+        if (thisTaskMessages.length > 0) {
+          if (thisTaskMessages.at(-1)?.role === 'user') {
+            thisTaskMessages.push({ role: 'assistant', content: '任务已取消。' });
+          }
+          await sessionService.appendTaskHistory(sessionId, { taskId, messages: thisTaskMessages });
+        }
         return;
       }
 
@@ -91,8 +107,17 @@ export async function runAgentLoop(
         await sessionService.addMessageToSession(sessionId, assistantMsg);
       }
 
-      // If no tool calls, add text to history and break
+      // If no tool calls: check if response was truncated
       if (plan.steps.length === 0) {
+        if (plan.stopReason === 'max_tokens') {
+          // Response was truncated — append partial text and ask model to continue
+          console.log('[Agent Loop] max_tokens hit, requesting continuation (round %d/%d)', round, MAX_ROUNDS);
+          if (plan.content) {
+            conversationHistory.push({ role: 'assistant', content: plan.content });
+          }
+          conversationHistory.push({ role: 'user', content: '继续' });
+          continue;
+        }
         if (plan.content) {
           conversationHistory.push({ role: 'assistant', content: plan.content });
           task.summary = plan.content;
@@ -167,17 +192,43 @@ export async function runAgentLoop(
       await sessionService.upsertTaskInSession(sessionId, task);
     }
 
+    // Handle trailing user turn (e.g. MAX_ROUNDS exhausted after tool_result)
+    if (conversationHistory.at(-1)?.role === 'user') {
+      conversationHistory.push({
+        role: 'assistant',
+        content: task.summary || '任务处理已达到最大轮次。',
+      });
+    }
+
     // Finalize task and persist
     task.status = abortSignal.aborted ? 'cancelled' : 'completed';
     task.updatedAt = Date.now();
     socket.emit('task:updated', { ...task });
     await sessionService.upsertTaskInSession(sessionId, task);
+
+    // Save this task's conversation history for future context
+    const thisTaskMessages = conversationHistory.slice(priorContext.length);
+    await sessionService.appendTaskHistory(sessionId, { taskId, messages: thisTaskMessages });
   } catch (err: any) {
     console.error('Agent loop error:', err);
     task.status = 'failed';
     task.updatedAt = Date.now();
     socket.emit('task:updated', { ...task });
     await sessionService.upsertTaskInSession(sessionId, task);
+
+    // Save partial history even on error
+    const thisTaskMessages = conversationHistory.slice(priorContext.length);
+    if (thisTaskMessages.length > 0) {
+      // Ensure no trailing user turn
+      if (thisTaskMessages.at(-1)?.role === 'user') {
+        thisTaskMessages.push({
+          role: 'assistant',
+          content: task.summary || '任务处理出错。',
+        });
+      }
+      await sessionService.appendTaskHistory(sessionId, { taskId, messages: thisTaskMessages });
+    }
+
     socket.emit('error', { message: err.message });
   }
 }

@@ -17,7 +17,7 @@ export interface AIToolCall {
 export interface AIResponse {
   content: string;
   toolCalls: AIToolCall[];
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens';
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence';
 }
 
 export interface StreamCallbacks {

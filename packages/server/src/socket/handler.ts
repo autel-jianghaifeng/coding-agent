@@ -79,7 +79,7 @@ export function setupSocketHandler(
 
   socket.on('session:load', async ({ sessionId }) => {
     try {
-      const session = await sessionService.getSession(sessionId);
+      const session = await sessionService.getClientSession(sessionId);
       socket.emit('session:loaded', session);
     } catch (err: any) {
       socket.emit('error', { message: `Failed to load session: ${err.message}` });

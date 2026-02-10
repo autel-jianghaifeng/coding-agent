@@ -1,4 +1,4 @@
-import type { AIProvider, AIMessage, AIContentBlock, StreamCallbacks } from '../providers/provider.js';
+import type { AIProvider, AIMessage, AIContentBlock, AIResponse, StreamCallbacks } from '../providers/provider.js';
 import type { TaskStep } from '@coding-agent/shared';
 import { v4 as uuid } from 'uuid';
 
@@ -6,11 +6,18 @@ const SYSTEM_PROMPT = `你是一个编程助手，帮助用户完成编程任务
 每当用户提出一个编程任务时，你首先需要理解用户的需求，然后根据需求生成一个详细的计划，并使用工具执行计划。
 总是编写清晰、结构良好的代码。创建完整的、可工作的文件。`;
 
+export interface PlanResult {
+  content: string;
+  steps: TaskStep[];
+  toolCalls: { id: string; name: string; input: Record<string, unknown> }[];
+  stopReason: AIResponse['stopReason'];
+}
+
 export async function planTask(
   provider: AIProvider,
   userPrompt: string,
   conversationHistory: AIMessage[],
-): Promise<{ content: string; steps: TaskStep[]; toolCalls: { id: string; name: string; input: Record<string, unknown> }[] }> {
+): Promise<PlanResult> {
   const messages: AIMessage[] = [
     ...conversationHistory,
     { role: 'user', content: userPrompt },
@@ -31,6 +38,7 @@ export async function planTask(
     content: response.content,
     steps,
     toolCalls: response.toolCalls,
+    stopReason: response.stopReason,
   };
 }
 
@@ -44,7 +52,7 @@ export async function streamPlanTask(
   provider: AIProvider,
   conversationHistory: AIMessage[],
   callbacks: StreamCallbacks,
-): Promise<{ content: string; steps: TaskStep[]; toolCalls: { id: string; name: string; input: Record<string, unknown> }[] }> {
+): Promise<PlanResult> {
   const response = await provider.streamChat(conversationHistory, SYSTEM_PROMPT, callbacks);
 
   const steps: TaskStep[] = response.toolCalls.map((tc) => ({
@@ -60,6 +68,7 @@ export async function streamPlanTask(
     content: response.content,
     steps,
     toolCalls: response.toolCalls,
+    stopReason: response.stopReason,
   };
 }
 
