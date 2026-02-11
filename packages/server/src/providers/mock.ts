@@ -1,4 +1,4 @@
-import type { AIProvider, AIMessage, AIResponse, StreamCallbacks } from './provider.js';
+import type { AIProvider, AIMessage, AIResponse, StreamCallbacks, AIProviderOptions } from './provider.js';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -14,6 +14,14 @@ async function streamText(text: string, callbacks: StreamCallbacks): Promise<voi
     i += chunkSize;
     await delay(20 + Math.floor(Math.random() * 30));
   }
+}
+
+function getPlanResponse(): AIResponse {
+  return {
+    content: `### 分析\n用户需要创建项目结构。\n\n### 计划\n1. [STEP:create-dir:src] 创建源代码目录\n2. [STEP:write-file:src/index.ts] 创建主入口文件\n3. [STEP:write-file:package.json] 创建项目配置`,
+    toolCalls: [],
+    stopReason: 'end_turn',
+  };
 }
 
 function getResponse(messages: AIMessage[]): AIResponse {
@@ -90,13 +98,25 @@ function getResponse(messages: AIMessage[]): AIResponse {
 }
 
 export class MockProvider implements AIProvider {
-  async chat(messages: AIMessage[], _systemPrompt: string): Promise<AIResponse> {
+  async chat(messages: AIMessage[], _systemPrompt: string, _options?: AIProviderOptions): Promise<AIResponse> {
+    if (_options?.disableTools) {
+      const response = getPlanResponse();
+      await delay(600);
+      return response;
+    }
     const response = getResponse(messages);
     await delay(600);
     return response;
   }
 
-  async streamChat(messages: AIMessage[], _systemPrompt: string, callbacks: StreamCallbacks): Promise<AIResponse> {
+  async streamChat(messages: AIMessage[], _systemPrompt: string, callbacks: StreamCallbacks, _options?: AIProviderOptions): Promise<AIResponse> {
+    if (_options?.disableTools) {
+      const response = getPlanResponse();
+      if (response.content) {
+        await streamText(response.content, callbacks);
+      }
+      return response;
+    }
     const response = getResponse(messages);
     // Simulate streaming the text content
     if (response.content) {

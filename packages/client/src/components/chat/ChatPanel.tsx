@@ -4,9 +4,11 @@ import { SessionSidebar } from './SessionSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { InputBar } from './InputBar';
+import { PlanApprovalBar } from './PlanApprovalBar';
 
 export function ChatPanel() {
   const sessionSidebarOpen = useStore((s) => s.sessionSidebarOpen);
+  const pendingPlanTaskId = useStore((s) => s.pendingPlanTaskId);
 
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg-primary)' }}>
@@ -22,7 +24,7 @@ export function ChatPanel() {
       >
         <ChatHeader />
         <MessageList />
-        <InputBar />
+        {pendingPlanTaskId ? <PlanApprovalBar /> : <InputBar />}
       </div>
     </div>
   );

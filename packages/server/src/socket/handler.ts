@@ -2,7 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@coding-agent/shared';
 import { config } from '../config.js';
 import { getFileTree, readFile, getLanguageFromPath } from '../services/workspace.js';
-import { runAgentLoop } from '../agent/agent-loop.js';
+import { runAgentLoop, approvePlan, rejectPlan } from '../agent/agent-loop.js';
 import { MockProvider } from '../providers/mock.js';
 import { ClaudeProvider } from '../providers/claude.js';
 import type { AIProvider } from '../providers/provider.js';
@@ -114,4 +114,7 @@ export function setupSocketHandler(
       abortSignal.aborted = true;
     }
   });
+
+  socket.on('plan:approve', ({ taskId }) => { approvePlan(taskId); });
+  socket.on('plan:reject', ({ taskId }) => { rejectPlan(taskId); });
 }

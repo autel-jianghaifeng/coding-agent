@@ -24,7 +24,14 @@ export interface StreamCallbacks {
   onText: (text: string) => void;
 }
 
+export interface AIProviderOptions {
+  /** 启用 Anthropic prompt caching */
+  enableCaching?: boolean;
+  /** 不发送 tool definitions，纯文本输出 */
+  disableTools?: boolean;
+}
+
 export interface AIProvider {
-  chat(messages: AIMessage[], systemPrompt: string): Promise<AIResponse>;
-  streamChat(messages: AIMessage[], systemPrompt: string, callbacks: StreamCallbacks): Promise<AIResponse>;
+  chat(messages: AIMessage[], systemPrompt: string, options?: AIProviderOptions): Promise<AIResponse>;
+  streamChat(messages: AIMessage[], systemPrompt: string, callbacks: StreamCallbacks, options?: AIProviderOptions): Promise<AIResponse>;
 }

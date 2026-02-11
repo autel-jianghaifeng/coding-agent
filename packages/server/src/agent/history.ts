@@ -6,7 +6,18 @@ export interface TaskHistory {
   messages: AIMessage[];
 }
 
-const MAX_CHAR_BUDGET = 200_000; // ~50k tokens
+const MAX_CHAR_BUDGET = 100_000; // ~25k tokens
+const MAX_TOOL_RESULT_CHARS = 20_000; // ~5k tokens
+
+function truncateToolResult(output: string): string {
+  if (output.length <= MAX_TOOL_RESULT_CHARS) return output;
+  const half = Math.floor(MAX_TOOL_RESULT_CHARS / 2);
+  return (
+    output.slice(0, half) +
+    `\n\n... [已截断 ${output.length - MAX_TOOL_RESULT_CHARS} 字符] ...\n\n` +
+    output.slice(-half)
+  );
+}
 
 /** Estimate character count of an AIMessage array */
 function estimateChars(messages: AIMessage[]): number {
@@ -81,6 +92,17 @@ export function buildContextHistory(
 
   // Add recent (full)
   result.push(...recentMessages);
+
+  // Truncate large tool_result blocks in prior context to prevent history bloat
+  for (const msg of result) {
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block.type === 'tool_result') {
+          block.content = truncateToolResult(block.content);
+        }
+      }
+    }
+  }
 
   // Enforce budget: trim from the beginning (oldest) until within budget
   let totalChars = estimateChars(result);

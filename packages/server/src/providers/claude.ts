@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import { tools } from '../agent/tools/index.js';
-import type { AIProvider, AIMessage, AIResponse, AIToolCall, StreamCallbacks } from './provider.js';
+import type { AIProvider, AIMessage, AIResponse, AIToolCall, StreamCallbacks, AIProviderOptions } from './provider.js';
 
 export class ClaudeProvider implements AIProvider {
   private client: Anthropic;
@@ -10,8 +10,16 @@ export class ClaudeProvider implements AIProvider {
     this.client = new Anthropic({ apiKey: config.anthropicApiKey });
   }
 
-  private getAnthropicTools(): Anthropic.Tool[] {
-    return tools.map((t) => ({
+  private buildSystemPrompt(systemPrompt: string, enableCaching: boolean): Anthropic.TextBlockParam[] {
+    const block: Anthropic.TextBlockParam = { type: 'text', text: systemPrompt };
+    if (enableCaching) {
+      (block as any).cache_control = { type: 'ephemeral' };
+    }
+    return [block];
+  }
+
+  private getAnthropicTools(enableCaching: boolean = false): Anthropic.Tool[] {
+    const result = tools.map((t) => ({
       name: t.name,
       description: t.description,
       input_schema: {
@@ -27,28 +35,58 @@ export class ClaudeProvider implements AIProvider {
           .map(([key]) => key),
       },
     }));
+    if (enableCaching && result.length > 0) {
+      (result[result.length - 1] as any).cache_control = { type: 'ephemeral' };
+    }
+    return result;
   }
 
-  private buildMessages(messages: AIMessage[]): Anthropic.MessageParam[] {
-    return messages.map((m) => ({
+  private buildMessages(messages: AIMessage[], enableCaching: boolean = false): Anthropic.MessageParam[] {
+    // Deep-clone content block arrays so adding cache_control doesn't mutate the originals
+    const result = messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
-      // Pass content through as-is; Anthropic SDK accepts both string and content block arrays
-      content: m.content as Anthropic.MessageParam['content'],
-    }));
+      content: typeof m.content === 'string'
+        ? m.content
+        : (m.content as any[]).map((block: any) => {
+            const { cache_control, ...rest } = block;
+            return rest;
+          }),
+    })) as Anthropic.MessageParam[];
+
+    if (enableCaching && result.length >= 2) {
+      // Find the second-to-last user message and add cache_control to its last content block
+      for (let i = result.length - 2; i >= 0; i--) {
+        if (result[i].role === 'user' && Array.isArray(result[i].content)) {
+          const blocks = result[i].content as any[];
+          if (blocks.length > 0) {
+            blocks[blocks.length - 1].cache_control = { type: 'ephemeral' };
+          }
+          break;
+        }
+      }
+    }
+
+    return result;
   }
 
-  async chat(messages: AIMessage[], systemPrompt: string): Promise<AIResponse> {
-    console.log('[LLM Request] chat() called');
+  async chat(messages: AIMessage[], systemPrompt: string, options?: AIProviderOptions): Promise<AIResponse> {
+    const enableCaching = options?.enableCaching ?? false;
+    const disableTools = options?.disableTools ?? false;
+    console.log('[LLM Request] chat() called (caching: %s, disableTools: %s)', enableCaching, disableTools);
     console.log('[LLM Request] messages:', JSON.stringify(messages, null, 2));
     console.log('[LLM Request] systemPrompt:', systemPrompt);
 
-    const response = await this.client.messages.create({
+    const params: Anthropic.MessageCreateParams = {
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 16384,
-      system: systemPrompt,
-      tools: this.getAnthropicTools(),
-      messages: this.buildMessages(messages),
-    });
+      system: enableCaching ? this.buildSystemPrompt(systemPrompt, true) : systemPrompt,
+      messages: this.buildMessages(messages, enableCaching),
+    };
+    if (!disableTools) {
+      params.tools = this.getAnthropicTools(enableCaching);
+    }
+
+    const response = await this.client.messages.create(params);
 
     let textContent = '';
     const toolCalls: AIToolCall[] = [];
@@ -69,6 +107,10 @@ export class ClaudeProvider implements AIProvider {
     console.log('[LLM Response] content:', textContent);
     console.log('[LLM Response] toolCalls:', JSON.stringify(toolCalls, null, 2));
     console.log('[LLM Response] stopReason:', response.stop_reason);
+    if (enableCaching) {
+      const usage = response.usage as any;
+      console.log('[LLM Cache] creation: %d, read: %d', usage.cache_creation_input_tokens ?? 0, usage.cache_read_input_tokens ?? 0);
+    }
 
     return {
       content: textContent,
@@ -77,18 +119,24 @@ export class ClaudeProvider implements AIProvider {
     };
   }
 
-  async streamChat(messages: AIMessage[], systemPrompt: string, callbacks: StreamCallbacks): Promise<AIResponse> {
-    console.log('[LLM Request] streamChat() called');
+  async streamChat(messages: AIMessage[], systemPrompt: string, callbacks: StreamCallbacks, options?: AIProviderOptions): Promise<AIResponse> {
+    const enableCaching = options?.enableCaching ?? false;
+    const disableTools = options?.disableTools ?? false;
+    console.log('[LLM Request] streamChat() called (caching: %s, disableTools: %s)', enableCaching, disableTools);
     console.log('[LLM Request] messages:', JSON.stringify(messages, null, 2));
     console.log('[LLM Request] systemPrompt:', systemPrompt);
 
-    const stream = this.client.messages.stream({
+    const streamParams: Anthropic.MessageCreateParams = {
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 16384,
-      system: systemPrompt,
-      tools: this.getAnthropicTools(),
-      messages: this.buildMessages(messages),
-    });
+      system: enableCaching ? this.buildSystemPrompt(systemPrompt, true) : systemPrompt,
+      messages: this.buildMessages(messages, enableCaching),
+    };
+    if (!disableTools) {
+      streamParams.tools = this.getAnthropicTools(enableCaching);
+    }
+
+    const stream = this.client.messages.stream(streamParams);
 
     stream.on('text', (text) => {
       callbacks.onText(text);
@@ -115,6 +163,10 @@ export class ClaudeProvider implements AIProvider {
     console.log('[LLM Response] content:', textContent);
     console.log('[LLM Response] toolCalls:', JSON.stringify(toolCalls, null, 2));
     console.log('[LLM Response] stopReason:', finalMessage.stop_reason);
+    if (enableCaching) {
+      const usage = finalMessage.usage as any;
+      console.log('[LLM Cache] creation: %d, read: %d', usage.cache_creation_input_tokens ?? 0, usage.cache_read_input_tokens ?? 0);
+    }
 
     return {
       content: textContent,

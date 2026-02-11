@@ -34,9 +34,12 @@ interface AppState {
   tasks: Map<string, Task>;
   activeTaskId: string | null;
   isProcessing: boolean;
+  pendingPlanTaskId: string | null;
   setTask: (task: Task) => void;
   updateTaskStep: (taskId: string, step: TaskStep) => void;
   setProcessing: (processing: boolean) => void;
+  setPendingPlan: (taskId: string) => void;
+  clearPendingPlan: () => void;
 
   // File tree
   fileTree: FileNode[];
@@ -149,11 +152,12 @@ export const useStore = create<AppState>((set, get) => ({
   tasks: new Map(),
   activeTaskId: null,
   isProcessing: false,
+  pendingPlanTaskId: null,
   setTask: (task) =>
     set((state) => {
       const tasks = new Map(state.tasks);
       tasks.set(task.id, task);
-      const isProcessing = task.status === 'running' || task.status === 'pending';
+      const isProcessing = task.status === 'running' || task.status === 'pending' || task.status === 'planning';
       return { tasks, activeTaskId: task.id, isProcessing };
     }),
   updateTaskStep: (taskId, step) =>
@@ -172,6 +176,8 @@ export const useStore = create<AppState>((set, get) => ({
       return { tasks };
     }),
   setProcessing: (isProcessing) => set({ isProcessing }),
+  setPendingPlan: (taskId) => set({ pendingPlanTaskId: taskId }),
+  clearPendingPlan: () => set({ pendingPlanTaskId: null }),
 
   fileTree: [],
   setFileTree: (fileTree) => set({ fileTree }),

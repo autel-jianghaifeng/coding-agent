@@ -22,6 +22,8 @@ export function useSocket() {
     startStreamingMessage,
     appendStreamingDelta,
     endStreamingMessage,
+    setPendingPlan,
+    clearPendingPlan,
   } = useStore();
 
   useEffect(() => {
@@ -48,13 +50,19 @@ export function useSocket() {
 
     socket.on('task:updated', (task) => {
       setTask(task);
-      if (task.status !== 'running' && task.status !== 'pending') {
+      if (task.status !== 'running' && task.status !== 'pending' && task.status !== 'planning' && task.status !== 'awaiting_approval') {
         setProcessing(false);
+        clearPendingPlan();
       }
     });
 
     socket.on('task:step:updated', ({ taskId, step }) => {
       updateTaskStep(taskId, step);
+    });
+
+    socket.on('plan:ready', ({ taskId }) => {
+      setPendingPlan(taskId);
+      setProcessing(false);
     });
 
     socket.on('file:tree', (tree) => {
@@ -148,6 +156,7 @@ export function useSocket() {
       socket.off('chat:stream:start');
       socket.off('chat:stream:delta');
       socket.off('chat:stream:end');
+      socket.off('plan:ready');
       socket.off('session:deleted');
       socket.disconnect();
     };

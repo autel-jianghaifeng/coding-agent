@@ -13,6 +13,8 @@ export interface ClientToServerEvents {
   'session:create': (data: { title?: string }) => void;
   'session:load': (data: { sessionId: string }) => void;
   'session:delete': (data: { sessionId: string }) => void;
+  'plan:approve': (data: { taskId: string }) => void;
+  'plan:reject': (data: { taskId: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -30,5 +32,6 @@ export interface ServerToClientEvents {
   'session:list': (sessions: SessionSummary[]) => void;
   'session:created': (summary: SessionSummary) => void;
   'session:loaded': (session: Session) => void;
+  'plan:ready': (data: { taskId: string; plan: string; steps: TaskStep[] }) => void;
   'session:deleted': (data: { sessionId: string }) => void;
 }

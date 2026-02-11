@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { TaskStep as TaskStepType } from '@coding-agent/shared';
 import { FileChangeBlock } from './FileChangeBlock';
 
-function StatusIcon({ status }: { status: TaskStepType['status'] }) {
+function StatusIcon({ status, planIndex }: { status: TaskStepType['status']; planIndex?: number }) {
   switch (status) {
     case 'running':
       return (
@@ -46,8 +46,15 @@ function StatusIcon({ status }: { status: TaskStepType['status'] }) {
             height: 16,
             borderRadius: '50%',
             border: '1.5px solid var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 9,
+            color: 'var(--text-muted)',
           }}
-        />
+        >
+          {planIndex != null ? planIndex + 1 : ''}
+        </div>
       );
   }
 }
@@ -70,7 +77,7 @@ export function TaskStepComponent({ step, index }: { step: TaskStepType; index: 
             padding: '4px 0 0 0',
           }}
         >
-          <StatusIcon status={step.status} />
+          <StatusIcon status={step.status} planIndex={step.planIndex} />
         </div>
         {/* File change block */}
         <div style={{ marginLeft: 24, marginTop: 2 }}>
@@ -95,7 +102,7 @@ export function TaskStepComponent({ step, index }: { step: TaskStepType; index: 
           userSelect: 'none',
         }}
       >
-        <StatusIcon status={step.status} />
+        <StatusIcon status={step.status} planIndex={step.planIndex} />
         <span
           style={{
             fontSize: 13,
